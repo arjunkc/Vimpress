@@ -143,8 +143,6 @@ def blog_set_keyring_info(fromvim=True):
                 #If nothing found, gk.find_items_sync throws a NoMatchError (but I can't seem to catch the error by name)
                 sys.stderr.write("No keys found\n")
                 found_keys = False
-            # we to try except, otherwise the find_items_sync function will throw an exception if no matches are found.
-            
 
             if found_keys:
                 # pop the first item in the search list. will fix this in the future: have to list all display names (uniquely defined) and let the user select the one that works. currently we just pick the first key as unique.
@@ -172,13 +170,16 @@ def blog_set_keyring_info(fromvim=True):
                         useracceptkey = vim.eval(vimcmd)
                     else:
                         # if called from shell
-                        useracceptkey = raw_input('Use username ' + blog_username + '? (y/n)')
+                        useracceptkey = input('Use username ' + blog_username + '? (Y/n)') + 'y'
                         
-                    if useracceptkey == 'y':
+                    if useracceptkey in ['y','Y']:
                         # set handler using the newly gained credentials
                         handler = xmlrpclib.ServerProxy(blog_url).wp
                         blog_login_success = blog_test()
                         acceptkey = True if blog_login_success else False
+                        if acceptkey:
+                            # break out of current loop
+                            break
                         # to delete, run gk.item_delete_sync(keyring,item_id)
                         # item_id can be found using key.item_id
                     
@@ -208,11 +209,11 @@ def blog_set_keyring_info(fromvim=True):
                     # ive tested the blog_url statement out. it picks default_url if you just hit enter.
                 else:
                     # shell version of above commands
-                    blog_username = raw_input('Enter username: ')
-                    blog_password = raw_input('Enter password: ')
+                    blog_username = input('Enter username: ')
+                    blog_password = input('Enter password: ')
                     default_url = 'https://' + blog_username + '.wordpress.com/xmlrpc.php'
-                    blog_url = raw_input("Enter url (" + default_url + "): ") or default_url
-                    enable_tags = raw_input('Enable tags? [True/False]') or False
+                    blog_url = input("Enter url (" + default_url + "): ") or default_url
+                    enable_tags = input('Enable tags? [True/False]') or False
                 if dbg:
                     enable_tags = vim.eval("input('Enable tags? ')")
                     print (blog_username, blog_password, blog_url )
@@ -226,7 +227,7 @@ def blog_set_keyring_info(fromvim=True):
                     if fromvim:
                         reenter_login = vim.eval("input('blog list failed. reenter details? (y/n)')")
                     else:
-                        reenter_login = raw_input('blog list failed. reenter details? (y/n)')
+                        reenter_login = input('blog list failed. reenter details? (y/n)')
                 else:
                     #if blog_works
                     sys.stdout.write("Blog test succesful. Creating new keyring item.")
@@ -236,14 +237,11 @@ def blog_set_keyring_info(fromvim=True):
                             'enable_tags': str(enable_tags)
                             }
                     # see my notes or the gnome project documentation for item_crete_sync parameters.
-                    gk.item_create_sync(KEYRING_NAME,gk.ITEM_GENERIC_SECRET,blog_username + '@' + blog_url,atts,blog_password,True)
+                    keyring.create_item(KEYRING_NAME,gk.ITEM_GENERIC_SECRET,blog_username + '@' + blog_url,atts,blog_password,True)
                     # the last True argument means that if the item already exists, update it.
                     # the outer while ends now
                 #endif
             #end while
-        else:
-            # if KEYRING_NAME does not exist, display error message.
-            sys.stderr.write('Keyring',KEYRING_NAME,'not found. Please create keyring, or disable keyring and set blog details in blog.vim.')
     except:
         # output abstract error and output function name
         sys.stderr.write('Error in blog_set_keyring_info')
