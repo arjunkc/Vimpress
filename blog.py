@@ -1,4 +1,5 @@
 # To do
+# 1. Sep 24 2017 To continue testing BlogSend and BlogNew, but have to do other things now
 # 1. Sep 24 2017 Debugging type errors in blog_list_posts
 # 1. Sep 24 2017 It allows no mechanism to switch between blogs easily. It's best to start a new vim instance to switch blogs now. Instead there should a function called BlogChange which will change the blog by resetting blog_username etc and rerunning blog_init.
 # 1. If no metadata found, exit gracefully. Currently there are weird errors it
