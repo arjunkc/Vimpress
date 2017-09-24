@@ -71,12 +71,14 @@ if has('python')
     " must check if SearchInRuntime has been sourced already.
     let pycmd = 'py'
     let pyfile = 'pyfile'
+    let blogfile = 'blog.py2'
     "let cmd = 'pyfile ' . fnamemodify(getcwd(),'%:h') . '/blog.py2'
     "pyfile blog.py2
 elseif has('python3')
     "py3file ~/.vim/plugin/vimpress/blog.py3
     let pycmd = 'py3'
     let pyfile = 'py3file'
+    let blogfile = 'blog.py3'
 endif
 
 command! -nargs=0 BlogList exec(pycmd . " blog_list_posts()")
@@ -86,5 +88,5 @@ command! -nargs=1 BlogOpen exec(pycmd . ' blog_open_post(<f-args>)')
 command! -nargs=0 DelMarkdownToc exec(pycmd . ' del_markdown_toc()')
 command! -nargs=0 WriteMarkdownToc exec(pycmd . ' write_markdown_toc()')
 
-let cmd = 'SearchInRuntime! ' . pyfile .  ' blog.py2'
+let cmd = 'SearchInRuntime! ' . pyfile .  ' ' . blogfile
 exec cmd
