@@ -63,7 +63,8 @@ KEYRING_NAME='vimpress'
 APP_NAME='vimpress'
 
 # use for debugging output
-dbg = True
+# debug levels are 0,1,2. 2 is a lot of debug
+dbg = 1
 
 # enable toc support for markdown. needs doctoc.
 enable_toc_support = 1
@@ -74,7 +75,7 @@ default_post_type = 'post'
 
 # see if called from within vim. to be manually set before calling the script
 # to be mostly used for testing. It really ought to be determined automatically.
-if dbg:
+if dbg >= 2:
     sys.stdout.write("sys.argv[0]:" + sys.argv[0] + "\n")
 
 if sys.argv[0].find("python") != -1:
@@ -85,7 +86,7 @@ else:
     from_vim = True
     import vim 
 
-if dbg:
+if dbg >= 2:
     sys.stdout.write("Value of from_vim variable: " + str(from_vim) + "\n")
 
 #########################
@@ -131,13 +132,13 @@ def blog_test():
         return True
     except:
         sys.stderr.write("An error has occured in blog_test\n")
-        if dbg:
+        if dbg >= 1:
             traceback.print_exc(file=sys.stdout)
         return False
 
 def blog_init():
     global blog_login_success, enable_gnome_keyring, dbg, keyring_bus, handler, blog_url
-    if dbg:
+    if dbg >= 1:
         sys.stdout.write("Running blog_init.\n")
 
 
@@ -145,7 +146,7 @@ def blog_init():
         # set login details
         if enable_gnome_keyring:
             keyring_bus = ss.dbus_init()
-            if dbg:
+            if dbg >= 1:
                 sys.stdout.write("Running blog_set_keyring_info()\n")
             blog_set_keyring_info()
             # this also sets blog_login_success
@@ -191,7 +192,7 @@ def blog_set_keyring_info():
         
 
                 # if debug enabled, print username password and url.
-                if dbg:
+                if dbg >= 1:
                     print(blog_username, blog_password, blog_url, blog_post_type, blog_post_format)
 
                 # ask whether to accept the current username?
@@ -199,7 +200,7 @@ def blog_set_keyring_info():
                 if from_vim:
                     vimcmd = "input('Use username " + blog_username + " (default=y/n)? ')"
                     useracceptkey = vim.eval(vimcmd) or 'y'
-                    if dbg:
+                    if dbg >= 1:
                         sys.stdout.write("\nuser acceptance key value: " + useracceptkey + "\n") 
                 else:
                     # if called from shell
@@ -212,7 +213,7 @@ def blog_set_keyring_info():
                     except:
                         sys.stdout.write("Error setting handler in blog_set_keyring_info()")
                     blog_login_success = blog_test()
-                    if dbg:
+                    if dbg >= 1:
                         sys.stdout.write("Blog login successful: "+ str(blog_login_success) + "\n") 
                     if blog_login_success:
                         break
@@ -235,7 +236,7 @@ def blog_set_keyring_info():
                     enter_blog_details_vim()
                 else:
                     enter_blog_details_python()
-                if dbg:
+                if dbg >= 1:
                     print (blog_username, blog_password, blog_url )
 
                 # (re)set handler
@@ -268,7 +269,7 @@ def blog_set_keyring_info():
     except:
         # for general try catchall in blog_set_keyring_info
         sys.stderr.write("Error in blog_set_keyring_info")
-        if dbg:
+        if dbg >= 1:
             traceback.print_exc(file=sys.stdout)
 
 def create_keyring_item(atts):
@@ -281,7 +282,7 @@ def create_keyring_item(atts):
                 found_keyring = True
     except:
         sys.stderr.write("Did not find default keyring:" + KEYRING_NAME)
-        if dbg:
+        if dbg >= 1:
             traceback.print_exc(file=sys.stdout)
     try:
         if not found_keyring:
@@ -292,7 +293,7 @@ def create_keyring_item(atts):
         ring.create_item(label,atts,blog_password,replace=True)
     except:
         sys.stderr.write("Error creating item or new collection/keyring")
-        if dbg:
+        if dbg >= 1:
             traceback.print_exc(file=sys.stdout)
 
             
@@ -394,7 +395,7 @@ def blog_send_post():
         sys.stdout.write("About to send blog post \n")
         try:
             if strid != '':
-                if dbg:
+                if dbg >= 1:
                     sys.stdout.write("Posting using strid: %s \n" % strid)
                 handler.editPost(0, blog_username,blog_password, strid, post)
             else:
@@ -413,7 +414,7 @@ def blog_send_post():
         #end try region
     except:
         sys.stderr.write("An error has occured in the python function blog_send_post\n")
-        if dbg:
+        if dbg >= 1:
             traceback.print_exc(file=sys.stdout)
 
 def blog_new_post():
@@ -536,7 +537,7 @@ def blog_list_edit():
         id = vim.current.buffer[row-1].split()[0]
         blog_open_post(int(id))
     except:
-        if dbg:
+        if dbg >= 1:
             sys.stderr.write("\nerror in blog_list_edit\n")
         else:
             pass
@@ -547,14 +548,14 @@ def set_post_type():
     # input post type. Usually set to page or post.
     global blog_post_type
     vimcmd = "input('Enter post type (page, post): ')"
-    if dbg:
+    if dbg >= 1:
         print(vimcmd)
     blog_post_type=vim.eval(vimcmd)
 
 def blog_list_posts():
     global handler, blog_login_success, from_vim, dbg
 
-    if dbg:
+    if dbg >= 1:
         sys.stdout.write("blog_login_success is: " + str(blog_login_success) + "\n")
         sys.stdout.write("blog_username is: " + str(blog_username) + "\n")
         sys.stdout.write("blog_username is: " + str(blog_username) + "\n")
@@ -587,7 +588,7 @@ def blog_list_posts():
                 print("".zfill(size-len(p['post_id'])).replace("0", " ")+p["post_id"]+"\t"+p["post_title"])           
     except:
         sys.stderr.write("An error has occured in blog_list_posts")
-        if dbg:
+        if dbg >= 1:
             traceback.print_exc(file=sys.stdout)
 
     return allposts
@@ -600,7 +601,7 @@ def convert_html_markdown(content,from_format='html',to_format='md'):
             # explicit file close commands need not be given
             f.write(content)
         out = subprocess.check_output(['pandoc','-f',from_format,'-t',to_format,'-o',fname_to,fname_from])
-        if dbg:
+        if dbg >= 1:
             sys.stdout.write(out.decode())
         # now open the converted file
         with open(fname_to,'r') as f:
@@ -646,7 +647,7 @@ def write_markdown_toc():
       # read the file into the buffer.
       
       # this will echo the whole tempfile, usually unnecessary
-      #if dbg:
+      #if dbg >= 1:
         #vim.command('echo tempfile')
   
       # clear old buffer
@@ -662,7 +663,7 @@ def write_markdown_toc():
       vim.current.window.cursor = (text_start, 0)
   
       # delete the DOCTOC string inserted that says, "generated by DOCTOC"
-      if dbg:
+      if dbg >= 1:
         sys.stdout.write("searching for doctoc string")
   
       line=0
@@ -673,7 +674,7 @@ def write_markdown_toc():
           # the function returns -1 if not found
           found_doctoc = True
           vim.current.buffer[line] = vim.current.buffer[line].replace(DOCTOCSTRING,'')
-          if dbg:
+          if dbg >= 1:
             sys.stderr.write("line number = " + str(line))
             sys.stderr.write(DOCTOCSTRING + '\n')
             sys.stderr.write(vim.current.buffer[line].replace(DOCTOCSTRING,'') + '\n')
