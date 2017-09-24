@@ -6,12 +6,13 @@
 
 # -*- coding: utf-8 -*-
 import urllib , urllib3 
-import vim , xml.dom.minidom , xmlrpc , sys , string , re
+import xml.dom.minidom , xmlrpc.client , sys , string , re
 # modules for me
 import os, traceback, socket
-#timeout socket lets me time out buggy xmlrpc calls.
-import gnomekeyring as gk
-# must migrate to the keyring package and support multiple keyring types.
+#timeout socket lets me time out buggy xmlrpc.client calls.
+#import gnomekeyring as gk
+import secretstorage as ss
+# must migrate to the keyring or secretstorage package and support multiple keyring types.
 
 #####################
 #      Settings     #
@@ -41,8 +42,14 @@ enable_toc_support = 1
 # set default posttype
 #posttype = 'post'
 posttype = 'page'
-# see if called from within vim
-#fromvim = True
+
+# see if called from within vim. to be manually set before calling the script
+# to be mostly used for testing.
+fromvim = False
+
+if fromvim:
+   import vim 
+
 
 #########################
 #      Global Constants #
@@ -64,7 +71,7 @@ blog_login_success = False
 #####################
 # Do not edit below #
 #####################
-# this is the xmlrpc serverproxy object that's returned on authentication with the blog.
+# this is the xmlrpc.client serverproxy object that's returned on authentication with the blog.
 global handler
 
 # the edit variable is to set listing mode to readonly. i think its not implemented correctly. there ought to be a vim option to set to readonly mode.
@@ -92,11 +99,12 @@ def blog_test():
 
 def blog_init():
     try:
-        global blog_login_success, enable_gnome_keyring, dbg
+        global blog_login_success, enable_gnome_keyring, dbg, keyring_bus
 
         if not blog_login_success:
             # set login details
             if enable_gnome_keyring:
+                keyring_bus = ss.dbus_init()
                 if dbg:
                     sys.stdout.write("Running blog_set_keyring_info()\n")
                 blog_set_keyring_info()
@@ -104,7 +112,7 @@ def blog_init():
             else:
                 # set handler using the newly gained credentials
                 #handler = xmlrpclib.ServerProxy(blog_url).metaWeblog
-                handler = xmlrpclib.ServerProxy(blog_url).wp
+                handler = xmlrpc.client.ServerProxy(blog_url).wp
                 blog_login_success = blog_test()
         
         # now blog_username, blog_password and blog_url should be set from the keyring or directly in the script.
@@ -117,74 +125,70 @@ def blog_init():
     except:
         sys.stderr.write("Error in blog_init().")
 
-def blog_set_keyring_info(fromvim=True):
+def blog_set_keyring_info():
+    # supports calling from a python shell and from within vim
     # if calling from a shell, set fromvim to False
     # sees if keyring items already exist by searching for the attribute APP_NAME in KEYRING_NAME. 
     # picks the first keyring item found - who has multiple blogs. nevertheless, this is a bug.
-    global blog_username, blog_password, blog_url, handler, blog_login_success
+    global blog_username, blog_password, blog_url, handler, blog_login_success, keyring_bus, fromvim
 
-    try:
-        keyrings = gk.list_keyring_names_sync()
-        # if the KEYRING_NAME exists at all, continue.
-        if KEYRING_NAME in keyrings:
-            # search for the appname in the list of keys
-            atts = {'appname':APP_NAME}
-            try:
-                # find keys created by the app. I'll assume the appname is unique.
-                keylist = gk.find_items_sync(gk.ITEM_GENERIC_SECRET,atts)
-                sys.stdout.write("Login credentials found.\n")
-                found_keys = True
-            except: 
-                #If nothing found, gk.find_items_sync throws a NoMatchError (but I can't seem to catch the error by name)
-                sys.stderr.write("No keys found\n")
-                found_keys = False
-            # we to try except, otherwise the find_items_sync function will throw an exception if no matches are found.
-            
+    try: #catchall for this function
+        # find keys
+        atts = {'appname':APP_NAME}
+        keylist = ss.search_items(keyring_bus,atts)
+        try:
+            foundkeys = True
+            acceptkey = False
+            for key in keylist:
+                # key is an object with methods like get_label, get_attributes. 
+                key_atts = key.get_attributes()
+                blog_username = key_atts['username']
+                blog_password = key.get_secret()
+                blog_url = key_atts['url']
+                # CONTINUE EDITING FROM HERE Sep 14 2017
 
-            if found_keys:
-                # pop the first item in the search list. will fix this in the future: have to list all display names (uniquely defined) and let the user select the one that works. currently we just pick the first key as unique.
+                # if debug enabled, print username password and url.
+                if dbg:
+                    print(blog_username, blog_password, blog_url)
+
+                # ask whether to accept the current username?
                 
-                acceptkey = False
-                while (not acceptkey) and (len(keylist) > 0):
-                    key = keylist.pop()
-                    # key is an object with attributes like keyring, attributes, password and secret. It does not contain the displayname. These are not object methods.
-
-                    #item_info = gk.item_get_info_sync(KEYRING_NAME,key.item_id)
-                    blog_username = key.attributes['username']
-                    blog_password = key.secret
-                    blog_url = key.attributes['url']
-
-                    # if debug enabled, print username password and url.
+                if fromvim:
+                    vimcmd = "input('Use username " + blog_username + "? (y/n)')"
                     if dbg:
-                        print(blog_username, blog_password, blog_url)
-
-                    # ask whether to accept the current username?
+                        print(vimcmd)
+                    useracceptkey = vim.eval(vimcmd)
+                else:
+                    # if called from shell
+                    useracceptkey = input('Use username ' + blog_username + '? (Y/n)') or 'y'
                     
-                    if fromvim:
-                        vimcmd = "input('Use username " + blog_username + "? (y/n)')"
-                        if dbg:
-                            print(vimcmd)
-                        useracceptkey = vim.eval(vimcmd)
-                    else:
-                        # if called from shell
-                        useracceptkey = raw_input('Use username ' + blog_username + '? (y/n)')
-                        
-                    if useracceptkey == 'y':
-                        # set handler using the newly gained credentials
-                        handler = xmlrpclib.ServerProxy(blog_url).wp
-                        blog_login_success = blog_test()
-                        acceptkey = True if blog_login_success else False
-                        # to delete, run gk.item_delete_sync(keyring,item_id)
-                        # item_id can be found using key.item_id
-                    
-            if (not foundkeys) or (not acceptkey): 
-                # if not found any keys or acceptkey failed due to failed login
-                sys.stdout.write("Creating new user\n")
+                if useracceptkey in ['y','Y']:
+                    # set handler using the newly gained credentials
+                    handler = xmlrpc.client.ServerProxy(blog_url).wp
+                    blog_login_success = blog_test()
+                    acceptkey = True if blog_login_success else False
+                    if acceptkey:
+                        # break out of current loop
+                        break
+                    # to delete, run gk.item_delete_sync(keyring,item_id)
+                    # item_id can be found using key.item_id
+        except StopIteration:
+            # did not find keys
+            foundkeys=False 
+            sys.stderr.write("No keys found\n")
+                
+        # accept key is True if useraccepts the key and the blog login succeeds. otherwise edit the keyring manually.
+        if (not foundkeys) or (not acceptkey): 
+            # if not found any keys or acceptkey failed due to failed login
+            sys.stdout.write("No acceptable key found.")
 
-            # the loop runs whether or not keys were found.
-            # the loop accepts username, password and url and tries to list blog entries. If it works, it creates a new item. If not, it asks if you want to reenter password.
+        # the loop runs whether or not keys were found.
+        # the loop accepts username, password and url and tries to list blog entries. If it works, it creates a new item. If not, it asks if you want to reenter password.
 
-            reenter_login = "y"
+            if fromvim:
+                reenter_login = vim.eval("input('Create new user? (Y/n)')") or 'y'
+            else:
+                reenter_login = input('Create new user? (Y/n)') or 'y'
             # if blog_login_success is true if the keyfound is succesful, will not run the loop.
             while (not blog_login_success) and reenter_login == "y":
                 # raw input will not work inside vim. so we have to call this section as an external shell python script.
@@ -203,17 +207,17 @@ def blog_set_keyring_info(fromvim=True):
                     # ive tested the blog_url statement out. it picks default_url if you just hit enter.
                 else:
                     # shell version of above commands
-                    blog_username = raw_input('Enter username: ')
-                    blog_password = raw_input('Enter password: ')
+                    blog_username = input('Enter username: ')
+                    blog_password = input('Enter password: ')
                     default_url = 'https://' + blog_username + '.wordpress.com/xmlrpc.php'
-                    blog_url = raw_input("Enter url (" + default_url + "): ") or default_url
-                    enable_tags = raw_input('Enable tags? [True/False]') or False
+                    blog_url = input("Enter url (" + default_url + "): ") or default_url
+                    enable_tags = input('Enable tags? [True/False]') or False
                 if dbg:
                     enable_tags = vim.eval("input('Enable tags? ')")
                     print (blog_username, blog_password, blog_url )
 
                 # (re)set handler
-                handler = xmlrpclib.ServerProxy(blog_url).wp
+                handler = xmlrpc.client.ServerProxy(blog_url).wp
                 # test if the blog works.
                 blog_login_success = blog_test()
                 if not blog_login_success:
@@ -221,7 +225,7 @@ def blog_set_keyring_info(fromvim=True):
                     if fromvim:
                         reenter_login = vim.eval("input('blog list failed. reenter details? (y/n)')")
                     else:
-                        reenter_login = raw_input('blog list failed. reenter details? (y/n)')
+                        reenter_login = input('blog list failed. reenter details? (y/n)')
                 else:
                     #if blog_works
                     sys.stdout.write("Blog test succesful. Creating new keyring item.")
@@ -231,17 +235,16 @@ def blog_set_keyring_info(fromvim=True):
                             'enable_tags': str(enable_tags)
                             }
                     # see my notes or the gnome project documentation for item_crete_sync parameters.
-                    gk.item_create_sync(KEYRING_NAME,gk.ITEM_GENERIC_SECRET,blog_username + '@' + blog_url,atts,blog_password,True)
+                    keyring.create_item(KEYRING_NAME,gk.ITEM_GENERIC_SECRET,blog_username + '@' + blog_url,atts,blog_password,True)
                     # the last True argument means that if the item already exists, update it.
                     # the outer while ends now
                 #endif
-            #end while
-        else:
-            # if KEYRING_NAME does not exist, display error message.
-            sys.stderr.write('Keyring',KEYRING_NAME,'not found. Please create keyring, or disable keyring and set blog details in blog.vim.')
+            #end while trying new login details
     except:
         # output abstract error and output function name
-        sys.stderr.write('Error in blog_set_keyring_info')
+        sys.stderr.write('Error in blog_set_keyring_info\n')
+        if dbg:
+            traceback.print_exc(file=sys.stdout)
 
 def blog_edit_off():
   global edit
