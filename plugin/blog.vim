@@ -66,21 +66,25 @@
 " To do
 " - Make tags global variables and refer to them instead of having local definitions everywhere.
 
-command! -nargs=0 BlogList exec("py blog_list_posts()")
-command! -nargs=0 BlogNew exec("py blog_new_post()")
-command! -nargs=0 BlogSend exec("py blog_send_post()")
-command! -nargs=1 BlogOpen exec('py blog_open_post(<f-args>)')
-command! -nargs=0 DelMarkdownToc exec('py del_markdown_toc()')
-command! -nargs=0 WriteMarkdownToc exec('py write_markdown_toc()')
-
 "python <<~/.vim/plugin/blog.py
 if has('python')
     " must check if SearchInRuntime has been sourced already.
-    let cmd = 'SearchInRuntime! pyfile blog.py2'
+    let pycmd = 'py'
+    let pyfile = 'pyfile'
     "let cmd = 'pyfile ' . fnamemodify(getcwd(),'%:h') . '/blog.py2'
     "pyfile blog.py2
 elseif has('python3')
     "py3file ~/.vim/plugin/vimpress/blog.py3
-    let cmd = 'SearchInRuntime! py3file blog.py3'
+    let pycmd = 'py3'
+    let pyfile = 'py3file'
 endif
+
+command! -nargs=0 BlogList exec(pycmd . " blog_list_posts()")
+command! -nargs=0 BlogNew exec(pycmd . " blog_new_post()")
+command! -nargs=0 BlogSend exec(pycmd . " blog_send_post()")
+command! -nargs=1 BlogOpen exec(pycmd . ' blog_open_post(<f-args>)')
+command! -nargs=0 DelMarkdownToc exec(pycmd . ' del_markdown_toc()')
+command! -nargs=0 WriteMarkdownToc exec(pycmd . ' write_markdown_toc()')
+
+let cmd = 'SearchInRuntime! ' . pyfile .  ' blog.py2'
 exec cmd
