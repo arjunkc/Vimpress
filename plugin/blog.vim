@@ -88,5 +88,7 @@ command! -nargs=1 BlogOpen exec(pycmd . ' blog_open_post(<f-args>)')
 command! -nargs=0 DelMarkdownToc exec(pycmd . ' del_markdown_toc()')
 command! -nargs=0 WriteMarkdownToc exec(pycmd . ' write_markdown_toc()')
 
-let cmd = 'SearchInRuntime! ' . pyfile .  ' ' . blogfile
+"let cmd = 'SearchInRuntime! ' . pyfile .  ' ' . blogfile
+" testing new unified blog.py
+let cmd = 'SearchInRuntime! ' . pyfile .  ' ' . 'blog.py'
 exec cmd

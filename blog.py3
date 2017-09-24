@@ -8,9 +8,9 @@
 import urllib , urllib3 
 import xml.dom.minidom , xmlrpc.client , sys , string , re
 # modules for me
-import os, traceback, socket
-#timeout socket lets me time out buggy xmlrpc.client calls.
-#import gnomekeyring as gk
+import os, traceback, socket, datetime
+import subprocess
+#timeout socket lets me time out buggy xmlrpc calls.
 import secretstorage as ss
 # must migrate to the keyring or secretstorage package and support multiple keyring types.
 
@@ -18,7 +18,7 @@ import secretstorage as ss
 #      Settings     #
 #####################
 
-enable_tags = 1
+enable_terms = False #in the wordpress api, terms stands for both categories and tags
 enable_gnome_keyring = True
 # if you do not enable keyring, set the variables below
 blog_username = ''
@@ -39,17 +39,18 @@ dbg = True
 # enable toc support for markdown. needs doctoc.
 enable_toc_support = 1
 
-# set default posttype
-#posttype = 'post'
-posttype = 'page'
+# set default post_type
+#posttype = 'post' # or page
+default_post_type = 'post'
 
 # see if called from within vim. to be manually set before calling the script
-# to be mostly used for testing.
-fromvim = False
-
-if fromvim:
-   import vim 
-
+# to be mostly used for testing. It really ought to be determined automatically.
+if sys.argv[0].find("python"):
+    from_vim = False
+else:
+    # the content of sys.argv[0] from within vim is strange and irrelevant
+    from_vim = True
+    import vim 
 
 #########################
 #      Global Constants #
@@ -57,8 +58,9 @@ if fromvim:
 TOC_START_STRING = '<!-- START doctoc generated TOC please keep comment here to allow auto update -->'
 # Modify according to DOCTOC tag. That is, take a md file, run doctoc on it, and see the start and end comments for the doctoc generated TOC. If doctoc is updated, its quite likely that these strings will be updated.
 TOC_END_STRING ='<!-- END doctoc generated TOC please keep comment here to allow auto update -->'
+# The meta data uses the % sign as an identifier in a weird way.
 META_DATA_START = '%=========== Meta ============'
-META_DATA_END = '%========== Content =========='
+META_DATA_END = '%========== Content ========== -->'
 VIMSYNTAX = 'markdown'
 VIMFILETYPE = 'markdown'
 DOCTOCSTRING = '*generated with [DocToc](http://doctoc.herokuapp.com/)*'
@@ -71,7 +73,7 @@ blog_login_success = False
 #####################
 # Do not edit below #
 #####################
-# this is the xmlrpc.client serverproxy object that's returned on authentication with the blog.
+# this is the xmlrpc serverproxy object that's returned on authentication with the blog.
 global handler
 
 # the edit variable is to set listing mode to readonly. i think its not implemented correctly. there ought to be a vim option to set to readonly mode.
@@ -98,39 +100,37 @@ def blog_test():
         return False
 
 def blog_init():
-    try:
-        global blog_login_success, enable_gnome_keyring, dbg, keyring_bus
+    global blog_login_success, enable_gnome_keyring, dbg, keyring_bus, handler, blog_url
+    if not blog_login_success:
+        # set login details
+        if enable_gnome_keyring:
+            keyring_bus = ss.dbus_init()
+            if dbg:
+                sys.stdout.write("Running blog_set_keyring_info()\n")
+            blog_set_keyring_info()
+            # this also sets blog_login_success
+        elif from_vim:
+            # if keyring not enabled, enter details manually
+            enter_blog_details_vim()
+            blog_login_success = blog_test()
+        else:
+            enter_blog_details_python()
+            blog_login_success = blog_test()
+    
+    # now blog_username, blog_password and blog_url should be set from the keyring or directly in the script.
 
-        if not blog_login_success:
-            # set login details
-            if enable_gnome_keyring:
-                keyring_bus = ss.dbus_init()
-                if dbg:
-                    sys.stdout.write("Running blog_set_keyring_info()\n")
-                blog_set_keyring_info()
-                # blog_set_keyring_info sets the handler and blog_login_success.
-            else:
-                # set handler using the newly gained credentials
-                #handler = xmlrpclib.ServerProxy(blog_url).metaWeblog
-                handler = xmlrpc.client.ServerProxy(blog_url).wp
-                blog_login_success = blog_test()
-        
-        # now blog_username, blog_password and blog_url should be set from the keyring or directly in the script.
-
-        # check if blog_login_success
-        if not blog_login_success:
-            sys.stderr.write("Blog login failed\n")
-            # sys.exit does not work well inside vim. it kills vim too.
-            #sys.exit(1)
-    except:
-        sys.stderr.write("Error in blog_init().")
+    # check if blog_login_success
+    if not blog_login_success:
+        sys.stderr.write("\nblog login failed\n")
+    else:
+        sys.stdout.write("\nblog login success\n")
 
 def blog_set_keyring_info():
     # supports calling from a python shell and from within vim
-    # if calling from a shell, set fromvim to False
+    # if calling from a shell, set from_vim to False
     # sees if keyring items already exist by searching for the attribute APP_NAME in KEYRING_NAME. 
     # picks the first keyring item found - who has multiple blogs. nevertheless, this is a bug.
-    global blog_username, blog_password, blog_url, handler, blog_login_success, keyring_bus, fromvim
+    global blog_post_type,blog_username, blog_password, blog_url, handler, blog_login_success, from_vim, blog_post_format,keyring_bus
 
     try: #catchall for this function
         # find keys
@@ -145,15 +145,15 @@ def blog_set_keyring_info():
                 blog_username = key_atts['username']
                 blog_password = key.get_secret()
                 blog_url = key_atts['url']
-                # CONTINUE EDITING FROM HERE Sep 14 2017
+                posttype = key_atts['post_type']
 
                 # if debug enabled, print username password and url.
                 if dbg:
-                    print(blog_username, blog_password, blog_url)
+                    print(blog_username, blog_password, blog_url, blog_post_type, blog_post_format)
 
                 # ask whether to accept the current username?
                 
-                if fromvim:
+                if from_vim:
                     vimcmd = "input('Use username " + blog_username + "? (y/n)')"
                     if dbg:
                         print(vimcmd)
@@ -170,8 +170,6 @@ def blog_set_keyring_info():
                     if acceptkey:
                         # break out of current loop
                         break
-                    # to delete, run gk.item_delete_sync(keyring,item_id)
-                    # item_id can be found using key.item_id
         except StopIteration:
             # did not find keys
             foundkeys=False 
@@ -179,20 +177,19 @@ def blog_set_keyring_info():
                 
         # accept key is True if useraccepts the key and the blog login succeeds. otherwise edit the keyring manually.
         if (not foundkeys) or (not acceptkey): 
-            # if not found any keys or acceptkey failed due to failed login
             sys.stdout.write("No acceptable key found.")
 
         # the loop runs whether or not keys were found.
         # the loop accepts username, password and url and tries to list blog entries. If it works, it creates a new item. If not, it asks if you want to reenter password.
 
-            if fromvim:
+            if from_vim:
                 reenter_login = vim.eval("input('Create new user? (Y/n)')") or 'y'
             else:
                 reenter_login = input('Create new user? (Y/n)') or 'y'
             # if blog_login_success is true if the keyfound is succesful, will not run the loop.
             while (not blog_login_success) and reenter_login == "y":
                 # raw input will not work inside vim. so we have to call this section as an external shell python script.
-                if fromvim:
+                if from_vim:
                     blog_username = vim.eval("input('Enter username: ')")
                     # mismatch quotes to get vim.eval to work correctly; like bash
                     # To self: see how to create a password prompt in python. This will display plaintext.
@@ -222,7 +219,7 @@ def blog_set_keyring_info():
                 blog_login_success = blog_test()
                 if not blog_login_success:
                     # you might choose to not reenter even if blog_test failed.
-                    if fromvim:
+                    if from_vim:
                         reenter_login = vim.eval("input('blog list failed. reenter details? (y/n)')")
                     else:
                         reenter_login = input('blog list failed. reenter details? (y/n)')
@@ -469,6 +466,7 @@ def set_post_type():
 
 
 def blog_list_posts():
+    global handler, blog_login_success, blog_username, blog_password, from_vim
   if dbg:
       sys.stdout.write("blog_login_success is: " + str(blog_login_success) + "\n")
       sys.stdout.write("blog_username is: " + str(blog_username) + "\n")
@@ -486,17 +484,18 @@ def blog_list_posts():
     # get length of postid for correct formatting
     size=len(allposts[0]['post_id'])
 
-    del vim.current.buffer[:]
-    vim.command("set syntax="+VIMSYNTAX)
-    vim.current.buffer[0] = "%====== List of Posts ========="
-    for p in allposts:
-      #vim.current.buffer.append(("".zfill(size-len(p['postid'])).replace("0", " ")+p["postid"])+"\t"+(p["title"]).encode("utf-8"))
-      vim.current.buffer.append(("".zfill(size-len(p['post_id'])).replace("0", " ")+p["post_id"])+"\t"+(p["post_title"]).encode("utf-8"))
-      vim.command('set nomodified')
-    # will reenable this when things are working
-    #blog_edit_off()
-    vim.current.window.cursor = (2, 0)
-    vim.command('map <enter> :py blog_list_edit()<cr>')
+    if from_vim:
+        del vim.current.buffer[:]
+        vim.command("set syntax="+VIMSYNTAX)
+        vim.current.buffer[0] = "%====== List of Posts ========="
+        for p in allposts:
+          #vim.current.buffer.append(("".zfill(size-len(p['postid'])).replace("0", " ")+p["postid"])+"\t"+(p["title"]).encode("utf-8"))
+          vim.current.buffer.append(("".zfill(size-len(p['post_id'])).replace("0", " ")+p["post_id"])+"\t"+p["post_title"])
+          vim.command('set nomodified')
+        # will reenable this when things are working
+        #blog_edit_off()
+        vim.current.window.cursor = (2, 0)
+        vim.command('map <enter> :py3 blog_list_edit()<cr>')
   except:
     sys.stderr.write("An error has occured in blog_list_posts")
     if dbg:
