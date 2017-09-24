@@ -430,7 +430,7 @@ def blog_new_post():
         l = handler.getTerms('', blog_username, blog_password,'category')
         s = ""
         for i in l:
-            s = s + (i["description"].encode("utf-8"))+", "
+            s = s + i["description"]+", "
         if s != "": 
             return s[:-2]
         else:
@@ -489,7 +489,7 @@ def blog_open_post(id):
             write_post_metadata(strid=str(id),title=post['post_title'],cats='',tags='')
 
         # automatically cursor position is now after the first line.
-        content = convert_html_markdown((post['post_content']).encode("utf-8"),from_format=blog_post_format,to_format='markdown')
+        content = convert_html_markdown((post['post_content']),from_format=blog_post_format,to_format='markdown')
     
         for line in content.split('\n'):
           vim.current.buffer.append(line)
@@ -571,7 +571,7 @@ def blog_list_posts():
             vim.command("set syntax="+VIMSYNTAX)
             vim.current.buffer[0] = "%====== List of Posts ========="
             for p in allposts:
-                #vim.current.buffer.append("".zfill(size-len(p['postid'])).replace("0", " ")+p["postid"]+"\t"+(p["title"]).encode("utf-8"))
+                #vim.current.buffer.append("".zfill(size-len(p['postid'])).replace("0", " ")+p["postid"]+"\t"+(p["title"]))
               vim.current.buffer.append("".zfill(size-len(p['post_id'])).replace("0", " ")+p["post_id"]+"\t"+p["post_title"])
               # do not allow editing
             vim.command('set nomodified')
